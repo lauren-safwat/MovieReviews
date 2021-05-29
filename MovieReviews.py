@@ -4,6 +4,7 @@ from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import LinearSVC
+from yellowbrick.text import TSNEVisualizer
 import os
 import re
 
@@ -82,9 +83,22 @@ def testModel(model):
 # ============================================================================
 
 
+def plotData():
+    tfidf = TfidfVectorizer()
+    docs = tfidf.fit_transform(reviews)
+    labels = reviewsLabel
+
+    tsne = TSNEVisualizer()
+    tsne.fit_transform(docs, labels)
+    tsne.poof()
+
+
+# ============================================================================
+
+
 def main():
-    path1 = "..\\txt_sentoken\\pos"
-    path2 = "..\\txt_sentoken\\neg"
+    path1 = "..\\review_polarity\\txt_sentoken\\pos"
+    path2 = "..\\review_polarity\\txt_sentoken\\neg"
     readReviews(path1)
     readReviews(path2)
     preprocessing()
@@ -92,6 +106,6 @@ def main():
     print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
     print()
     testModel(model)
-
+    plotData()
 
 main()
