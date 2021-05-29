@@ -1,36 +1,41 @@
-import sklearn
 import pandas as pd
 import matplotlib as plt
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 import os
 import re
 
-posReviews = []
-negReviews = []
 reviews = []
 
-def readReviews(path1, list):
+def readReviews(path1):
     for filename in os.listdir(path1):
         f = open(os.path.join(path1, filename), "r")
-        list.append(f.read())
+        reviews.append(f.read())
 
-def preprocessing(list):
-    for i in range(len(list)):
-        list[i] = " ".join([word for word in word_tokenize(list[i]) if word not in stopwords.words()])
-        list[i] = re.sub('[\W]+', ' ', list[i])
+def preprocessing():
+    for i in range(len(reviews)):
+        reviews[i] = re.sub('[\W]+', ' ', reviews[i])
+        tokens = word_tokenize(reviews[i])
+        for word in tokens:
+            if word in stopwords.words():
+                reviews[i] = reviews[i].replace(" "+word+" ", " ")
+        break
 
 def generateTF_IDF():
-    tfidf_vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(use_idf=True)
-    tfidf_vectors = tfidf_vectorizer.fit_transform(reviews)
+    tfidf_vectorizer = TfidfVectorizer(use_idf=True)
+    tfidf_vectors = tfidf_vectorizer.fit_transform([reviews[0]])
+    df = pd.DataFrame(tfidf_vectors[0].T.todense(), index=tfidf_vectorizer.get_feature_names(), columns=["tfidf"])
+    df.sort_values(by=["tfidf"], ascending=False)
+    print(df)
 
 
-# Press the green button in the gutter to run the script.
 path1 = "E:\\FCAI\\4th year , 2nd semester\\NLP\\Assignments\\Assignment 2\\review_polarity\\txt_sentoken\\pos"
 path2 = "E:\\FCAI\\4th year , 2nd semester\\NLP\\Assignments\\Assignment 2\\review_polarity\\txt_sentoken\\neg"
-readReviews(path1, posReviews)
-readReviews(path2, negReviews)
-reviews = posReviews
-reviews.extend(negReviews)
-preprocessing(reviews)
+readReviews(path1)
+readReviews(path2)
+preprocessing()
 print(reviews[0])
+print()
+generateTF_IDF()
