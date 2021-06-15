@@ -2,9 +2,10 @@ import numpy as np
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import StratifiedKFold, GridSearchCV
-from sklearn.svm import LinearSVC
-from sklearn.svm import SVC
+from sklearn.model_selection import StratifiedKFold, GridSearchCV, RepeatedStratifiedKFold
+from sklearn.svm import LinearSVC, SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from yellowbrick.text import TSNEVisualizer
 import os
 import re
@@ -33,23 +34,21 @@ def readReviews(path):
 def preprocessing():
     reviewsLabel[0:1000] = 1
     stopWords = stopwords.words("english")
-    moreChars = ['\'s', '\'re', '(', '?', ')', '.', ',', ':', '-', '/', '``', '\'ll']
     stopWords.remove('not')
-    stopWords.extend(moreChars)
 
     for i in range(len(reviews)):
-        gensim.utils.simple_preprocess(reviews[i])
-        reviews[i] = re.sub("[0-9]", "", reviews[i])
-        reviews[i] = re.sub("[/]", ' ', reviews[i])
         reviews[i] = [word for word in word_tokenize(reviews[i]) if word not in stopWords and (len(word) > 2)]
+        reviews[i] = [word for word in reviews[i] if word.isalpha() or word.find("n't") != -1]
+
+    print(' '.join(reviews[0]))
 
 
 # ============================================================================
 
 
 def createWordEmbedding():
-    model = gensim.models.Word2Vec(reviews, vector_size=150, window=5, min_count=1, workers=8)
-    model.train(reviews, total_examples=len(reviews), epochs=10)
+    model = gensim.models.Word2Vec(reviews, vector_size=1200, window=20, min_count=1, workers=8)
+    model.train(reviews, total_examples=len(reviews), epochs=100)
     return model
 
 
@@ -70,14 +69,64 @@ def sentenceEmbedding(model):
 # ============================================================================
 
 
-def svc_param_selection(X, y, nfolds):
-    Cs = [0.001, 0.01, 0.1, 1, 10]
-    gammas = [0.001, 0.01, 0.1, 1]
-    param_grid = {'C': Cs, 'gamma' : gammas}
-    grid_search = GridSearchCV(SVC(kernel='rbf'), param_grid, cv=nfolds)
-    grid_search.fit(X, y)
-    grid_search.best_params_
-    return grid_search.best_params_
+def svcHyperparam(X, y):
+    model = SVC()
+    kernel = ['poly', 'rbf', 'sigmoid', 'linear']
+    C = [100, 50, 10, 1.0, 0.1]
+    gamma = [0.001, 0.01, 0.1, 1, 10]
+    # define grid search
+    grid = dict(kernel=kernel, C=C, gamma=gamma)
+    cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=3)
+    grid_search = GridSearchCV(estimator=model, param_grid=grid, n_jobs=-1, cv=cv, scoring='accuracy', error_score=0)
+    grid_result = grid_search.fit(X, y)
+    # summarize results
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, param in zip(means, params):
+        print("%f with: %r" % (mean, param))
+
+
+# ============================================================================
+
+
+def randForestHparam(X, y):
+    model = RandomForestClassifier()
+    n_estimators = [10, 100, 1000]
+    max_features = ['sqrt', 'log2']
+    # define grid search
+    grid = dict(n_estimators=n_estimators, max_features=max_features)
+    cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=3)
+    grid_search = GridSearchCV(estimator=model, param_grid=grid, n_jobs=-1, cv=cv, scoring='accuracy', error_score=0)
+    grid_result = grid_search.fit(X, y)
+    # summarize results
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, param in zip(means, params):
+        print("%f with: %r" % (mean, param))
+
+
+# ============================================================================
+
+
+def logisticHyperparam(X, y):
+    model = LogisticRegression()
+    solvers = ['newton-cg', 'lbfgs', 'liblinear']
+    penalty = ['l2']
+    c_values = [100, 10, 1.0, 0.1, 0.01]
+    # define grid search
+    grid = dict(solver=solvers, penalty=penalty, C=c_values)
+    cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=3)
+    grid_search = GridSearchCV(estimator=model, param_grid=grid, n_jobs=-1, cv=cv, scoring='accuracy', error_score=0)
+    grid_result = grid_search.fit(X, y)
+    # summarize results
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
 
 
 # ============================================================================
@@ -173,16 +222,24 @@ def main():
     readReviews(path1)
     readReviews(path2)
     preprocessing()
+
+    """ TF-IDF """
     # model, nCorrectPred = trainTF_IDF()
     # print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
     # print()
     # testModel(model, true)
     #plotData()
 
+    """ Word and Sentence Embedding Model """
     word2vecModel = createWordEmbedding()
     reviewFeatureVec = sentenceEmbedding(word2vecModel)
-    svmModel, accuracy = trainSVM_Classifier(reviewFeatureVec)
-    print("Accuracy: ", accuracy * 100, "%")
+    logisticHyperparam(reviewFeatureVec, reviewsLabel)
+
+    # svmModel, accuracy = trainSVM_Classifier(reviewFeatureVec)
+    # print("Accuracy: ", accuracy * 100, "%")
+
+    #svcHyperparam(reviewFeatureVec, reviewsLabel)
+    #randForestHparam(reviewFeatureVec, reviewsLabel)
 
 
 main()
