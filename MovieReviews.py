@@ -83,6 +83,22 @@ def svc_param_selection(X, y, nfolds):
 # ============================================================================
 
 
+def trainSVM_Classifier(featureVec):
+    kf = StratifiedKFold(n_splits=5, random_state=3, shuffle=True)
+    nCorrectPred = 0
+    model = LinearSVC()
+
+    for train_index, test_index in kf.split(featureVec, reviewsLabel):
+        X_train = [featureVec[i] for i in train_index]
+        X_test = [featureVec[i] for i in test_index]
+        Y_train, Y_test = reviewsLabel[train_index], reviewsLabel[test_index]
+
+        model.fit(X_train, Y_train)
+        result = model.predict(X_test)
+
+        nCorrectPred += sum(Y_test == result)
+
+    return model, nCorrectPred/2000
 
 
 # ============================================================================
@@ -165,7 +181,8 @@ def main():
 
     word2vecModel = createWordEmbedding()
     reviewFeatureVec = sentenceEmbedding(word2vecModel)
-
+    svmModel, accuracy = trainSVM_Classifier(reviewFeatureVec)
+    print("Accuracy: ", accuracy * 100, "%")
 
 
 main()
