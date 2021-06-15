@@ -24,6 +24,8 @@ def readReviews(path, reviews):
         f = open(os.path.join(path, filename), "r")
         reviews.append(f.read())
 
+    return reviews
+
 
 # ============================================================================
 
@@ -37,12 +39,14 @@ def preprocessing(reviews, reviewsLabel):
         reviews[i] = [word for word in word_tokenize(reviews[i]) if word not in stopWords and (len(word) > 2)]
         reviews[i] = [word for word in reviews[i] if word.isalpha() or word.find("n't") != -1]
 
+    return reviews, reviewsLabel
+
 
 # ============================================================================
 
 
 def createWordEmbedding(reviews):
-    model = gensim.models.Word2Vec(reviews, vector_size=1200, window=20, min_count=1, workers=8)
+    model = gensim.models.Word2Vec(reviews, vector_size=1000, window=20, min_count=1, workers=15)
     model.train(reviews, total_examples=len(reviews), epochs=100)
     return model
 
@@ -58,7 +62,7 @@ def sentenceEmbedding(model, reviews):
             reviewFeatureVec.append(np.mean(model.wv[review], axis=0))
         else:
             reviewFeatureVec.append([])
-
+    print(reviewFeatureVec[0])
     return reviewFeatureVec
 
 
@@ -70,9 +74,8 @@ def svcHyperparam(X, y):
 
     kernel = ['poly', 'rbf', 'sigmoid', 'linear']
     C = [100, 50, 10, 1.0, 0.1]
-    gamma = [0.001, 0.01, 0.1, 1, 10]
 
-    grid = dict(kernel=kernel, C=C, gamma=gamma)
+    grid = dict(kernel=kernel, C=C)
     cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=3)
     grid_search = GridSearchCV(estimator=model, param_grid=grid, n_jobs=-1, cv=cv, scoring='accuracy', error_score=0)
     grid_result = grid_search.fit(X, y)
@@ -112,10 +115,9 @@ def logisticHyperparam(X, y):
     model = LogisticRegression()
 
     solvers = ['newton-cg', 'lbfgs', 'liblinear']
-    penalty = ['l2']
     c_values = [100, 10, 1.0, 0.1, 0.01]
 
-    grid = dict(solver=solvers, penalty=penalty, C=c_values)
+    grid = dict(solver=solvers, C=c_values)
     cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=3)
     grid_search = GridSearchCV(estimator=model, param_grid=grid, n_jobs=-1, cv=cv, scoring='accuracy', error_score=0)
     grid_result = grid_search.fit(X, y)
@@ -130,30 +132,10 @@ def logisticHyperparam(X, y):
 # ============================================================================
 
 
-def trainSVM_Classifier(X, y):
-    kf = StratifiedKFold(n_splits=5, random_state=3, shuffle=True)
-    nCorrectPred = 0
-    model = LinearSVC()
-
-    for train_index, test_index in kf.split(X, y):
-        X_train = [X[i] for i in train_index]
-        X_test = [X[i] for i in test_index]
-        Y_train, Y_test = y[train_index], y[test_index]
-
-        model.fit(X_train, Y_train)
-        result = model.predict(X_test)
-
-        nCorrectPred += sum(Y_test == result)
-
-    return model, nCorrectPred/2000
-
-
-# ============================================================================
-
-
 def trainTF_IDF_SVM(X, y):
     kf = StratifiedKFold(n_splits=5, random_state=3, shuffle=True)
     nCorrectPred = 0
+    model = SVC(kernel='sigmoid', C=10, gamma=0.001)
 
     for train_index, test_index in kf.split(X, y):
         X_train = [' '.join(X[i]) for i in train_index]
@@ -162,7 +144,6 @@ def trainTF_IDF_SVM(X, y):
 
         trainTF_IDF = tfidf_vectorizer.fit_transform(X_train)
         testTF_IDF = tfidf_vectorizer.transform(X_test)
-        model = LinearSVC()
         model.fit(trainTF_IDF, Y_train)
         result = model.predict(testTF_IDF)
 
@@ -197,7 +178,7 @@ def trainTF_IDF_LR(X, y):
 # ============================================================================
 
 
-def testModel(model, is_tfidf):
+def testModel(model):
     print("Enter your movie review: ")
     lines = []
     while True:
@@ -239,39 +220,36 @@ def main():
 
     path1 = "..\\review_polarity\\txt_sentoken\\pos"
     path2 = "..\\review_polarity\\txt_sentoken\\neg"
-    readReviews(path1, reviews)
-    readReviews(path2, reviews)
-    preprocessing(reviews,reviewsLabel)
+    reviews = readReviews(path1, reviews)
+    reviews = readReviews(path2, reviews)
+    reviews, reviewsLabel = preprocessing(reviews, reviewsLabel)
 
     """ TF-IDF - SVM"""
-    # model, nCorrectPred = trainTF_IDF_SVM(reviews, reviewsLabel)
-    # print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
-    # print()
-    # testModel(model, true)
-    # plotData()
+    model, nCorrectPred = trainTF_IDF_SVM(reviews, reviewsLabel)
+    print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
+    print()
+    testModel(model)
+    plotData()
 
     """ TF-IDF - LR"""
-    # model, nCorrectPred = trainTF_IDF_LR(reviews, reviewsLabel)
-    # print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
-    # print()
-    # testModel(model, true)
-    # plotData()
+    model, nCorrectPred = trainTF_IDF_LR(reviews, reviewsLabel)
+    print("Accuracy: ", (nCorrectPred / 2000) * 100, "%")
+    print()
+    testModel(model)
+    plotData()
 
     """ Word and Sentence Embedding Model """
     word2vecModel = createWordEmbedding(reviews)
     reviewFeatureVec = sentenceEmbedding(word2vecModel, reviews)
 
     """ Tuning hyperparameters for LR Classifier"""
-    # logisticHyperparam(reviewFeatureVec, reviewsLabel)
-
-    # svmModel, accuracy = trainSVM_Classifier(reviewFeatureVec, reviewsLabel)
-    # print("Accuracy: ", accuracy * 100, "%")
+    logisticHyperparam(reviewFeatureVec, reviewsLabel)
 
     """ Tuning hyperparameters for SVC Classifier"""
     svcHyperparam(reviewFeatureVec, reviewsLabel)
 
     """ Tuning hyperparameters for RF Classifier"""
-    #randForestHparam(reviewFeatureVec, reviewsLabel)
+    randForestHparam(reviewFeatureVec, reviewsLabel)
 
 
 main()
